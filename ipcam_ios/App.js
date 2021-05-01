@@ -18,6 +18,7 @@ import {
   RTCView,
   mediaDevices,
 } from 'react-native-webrtc';
+import MyCamera from './Components/mycamera';
 
 const Stack = createStackNavigator();
 const pc_config = {
@@ -97,7 +98,8 @@ class HomeScreen extends React.Component {
         <Button
           onPress={() =>
             this.props.navigation.navigate('Video', {
-              roomid: this.state.roomId,
+              // roomid: this.state.roomId,
+              roomid: 111,
               ipAddress: this.state.ipAddress,
             })
           }
@@ -113,6 +115,12 @@ class VideoScreen extends React.Component {
     super(props);
     this.state = {
       connected: false,
+      takePhoto: false,
+      isFront: false,
+      flash: true,
+      exposure: -1,
+      autoFocus: true,
+      pictureSize: 'Photo',
     };
     this.roomId = this.props.route.params.roomid;
     this.ipaddress = 'http://' + this.props.route.params.ipAddress;
@@ -122,7 +130,6 @@ class VideoScreen extends React.Component {
     this.candidates = {};
     this.initiator = false;
     this.localStream = null;
-    this.isFront = false;
   }
   componentDidMount() {
     // const roomId = 111;
@@ -141,9 +148,7 @@ class VideoScreen extends React.Component {
 
     this.socket.on('established', () => {
       console.log('established!!!!!!!!!!!!!');
-      // if (!this.initiator) {
       this.createOffer();
-      // }
     });
 
     this.socket.on('offer-or-answer', sdp => {
@@ -170,6 +175,49 @@ class VideoScreen extends React.Component {
         .addIceCandidate(new RTCIceCandidate(candidate))
         .catch(e => console.log(e));
     });
+
+    this.socket.on('receive-setting', data => {
+      // console.log(data);
+      if ('flash' in data) {
+        console.log('Set flash to', data.flash);
+        this.setState({flash: data.flash});
+      }
+      if ('isFront' in data) {
+        console.log('Set camera type to', data.isFront ? 'front' : 'back');
+        this.setState({isFront: data.isFront});
+      }
+      if ('exposure' in data) {
+        console.log('Set exposure to', data.exposure);
+        this.setState({exposure: data.exposure});
+      }
+      if ('autoFocus' in data) {
+        console.log('Set autoFocus to', data.autoFocus);
+        this.setState({autoFocus: data.autoFocus});
+      }
+      if ('pictureSize' in data) {
+        console.log('Set picture size to', data.pictureSize);
+        this.setState({pictureSize: data.pictureSize});
+      }
+    });
+
+    this.socket.on('take-photo', () => {
+      // console.log('Take a Photo');
+      // if (this.localStream) {
+      //   console.log('release stream before taking photo');
+      //   this.releaseStream();
+      // }
+      this.switchTakePhoto(true);
+      // this.getLocalStream();
+    });
+
+    this.socket.on('check-peer-state', () => {
+      console.log('check-peer-state');
+      console.log(this.localStream == null);
+      console.log(this.pc);
+      if (this.pc) {
+        console.log(this.pc.connectionState);
+      }
+    });
   }
 
   setupPC() {
@@ -183,6 +231,7 @@ class VideoScreen extends React.Component {
       if (this.pc.connectionState === 'disconnected') {
         this.setState({connected: false});
         this.releaseStream();
+        this.pc.close();
       }
     };
 
@@ -203,12 +252,12 @@ class VideoScreen extends React.Component {
     // };
 
     mediaDevices.enumerateDevices().then(sourceInfos => {
-      let videoSourceId;
+      let videoSourceId = null;
       for (let i = 0; i < sourceInfos.length; i++) {
         const sourceInfo = sourceInfos[i];
         if (
           sourceInfo.kind === 'videoinput' &&
-          sourceInfo.facing === (this.isFront ? 'front' : 'environment')
+          sourceInfo.facing === (this.state.isFront ? 'front' : 'environment')
         ) {
           videoSourceId = sourceInfo.deviceId;
           console.log('source info: ' + JSON.stringify(sourceInfo));
@@ -218,14 +267,9 @@ class VideoScreen extends React.Component {
       // called when getUserMedia() successfully returns
       const success = stream => {
         console.log('local stream: ' + typeof stream.getTracks()[0]);
-        // this.localStream = stream;
+        this.localStream = stream;
         // add this stream to the RTCPeerConnection
         this.pc.addStream(stream);
-
-        // stream.getTracks().forEach(track => {
-        //   console.log('for each track' + track.id);
-        //   this.pc.addTrack(track, stream);
-        // });
       };
 
       const constraints = {
@@ -234,10 +278,10 @@ class VideoScreen extends React.Component {
           // height: {min: 120, ideal: 360, max: 720},
           width: 1280,
           height: 720,
-          facingMode: this.isFront ? 'user' : 'environment',
+          facingMode: this.state.isFront ? 'user' : 'environment',
           optional: videoSourceId ? [{sourceId: videoSourceId}] : [],
         },
-        audio: false
+        audio: false,
       };
       mediaDevices
         .getUserMedia(constraints)
@@ -252,7 +296,7 @@ class VideoScreen extends React.Component {
   }
 
   releaseStream() {
-    this.setState({connected: false});
+    // this.setState({connected: false});
     if (this.localStream != null) {
       this.localStream.getTracks().forEach(track => track.stop());
       this.localStream = null;
@@ -295,13 +339,26 @@ class VideoScreen extends React.Component {
       .catch(e => console.log(e));
   }
 
+  switchTakePhoto = state => {
+    // console.log('to take a photo is ', this.state.takePhoto);
+    this.setState({takePhoto: state});
+  };
+
   render() {
-    console.log('local stream', this.localStream);
     return (
       <View style={styles.container}>
-        <RTCView
-          style={styles.imageView}
-          streamURL={this.localStream && this.localStream.toURL()}
+        <MyCamera
+          style={{
+            display: 'none',
+          }}
+          socket={this.socket}
+          takePhoto={this.state.takePhoto}
+          isFront={this.state.isFront}
+          flash={this.state.flash}
+          exposure={this.state.exposure}
+          autoFocus={this.state.autoFocus}
+          pictureSize={this.state.pictureSize}
+          switchTakePhoto={this.switchTakePhoto}
         />
       </View>
     );

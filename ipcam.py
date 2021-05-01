@@ -28,26 +28,7 @@ class IPcam:
 		self.initiator = None
 		self.candidates = []
 		self.isplaying = False
-		# self.player = MediaPlayer("")
-	async def sendToPeer(self, message, data):
-		await self.sio.emit(message, data)
-	async def playvideo(self):
-		print("transfer to frame")
-		if not self.local_video:
-			print("no local video")
-			return 
-		print("Video stream exists.")
-		self.isplaying = True
-		while True:
-			frame = await self.local_video.recv()
-			img = frame.to_ndarray(format="bgr24")
-			cv2.imshow("video", img)
-			key = cv2.waitKey(1)
-			if key == ord('a'):
-				break
-		self.isplaying = False
-		cv2.destroyWindow("video")
-		cv2.waitKey(1) # must add a another waitKey to close the window
+
 	async def createSIO(self):
 		print("create a new async sio client")
 		self.sio = socketio.AsyncClient()
@@ -82,7 +63,6 @@ class IPcam:
 		@self.sio.on("candidate")
 		async def addCandidate(candidate):
 			self.candidates.append(candidate)
-			# print("candidate:", candidate)
 			split_candidate = candidate["candidate"].split(" ")
 			sdpMLineIndex = candidate["sdpMLineIndex"]
 			sdpMid = candidate["sdpMid"]
@@ -94,12 +74,41 @@ class IPcam:
 			port = int(split_candidate[5])
 			candidate_type = split_candidate[7]
 			tcp_type = split_candidate[9]
-			# print(component, foundation, ip, port, priority, protocol, candidate_type, sdpMid, sdpMLineIndex)
 			new_candidate = RTCIceCandidate(component = component, foundation = foundation, ip = ip, port = port, priority = priority, protocol = protocol, type = candidate_type, sdpMid = sdpMid, sdpMLineIndex = sdpMLineIndex, tcpType = tcp_type)
-			# print(new_candidate)
 			await self.pc.addIceCandidate(new_candidate)
 			print("successfully add new candidate")
 	
+	async def sendToPeer(self, message, data):
+		await self.sio.emit(message, data)
+	async def siowait(self):
+		await self.sio.wait()
+	async def sioclose(self):
+		print("socketio disconnet")
+		await self.sio.disconnect()
+	async def pcclose(self):
+		if self.pc:
+			await self.pc.close()
+		else:
+			print("There is no peer connection")
+	async def playvideo(self):
+		print("transfer to frame")
+		if not self.local_video:
+			print("no local video")
+			return 
+		print("Video stream exists.")
+		self.isplaying = True
+		while True:
+			frame = await self.local_video.recv()
+			img = frame.to_ndarray(format="bgr24")
+			cv2.imshow("video", img)
+			key = cv2.waitKey(1)
+			if key == ord('a'):
+				break
+		self.isplaying = False
+		cv2.destroyWindow("video")
+		cv2.waitKey(1) # must add a another waitKey to close the window
+		await self.pcclose()
+		await self.sio.emit("close")
 
 	async def joinRoom(self):
 		await self.createSIO()
@@ -115,12 +124,16 @@ class IPcam:
 				await self.playvideo()
 			elif self.pc.connectionState == "failed" and self.pc:
 				await self.pc.close()
-		@self.pc.on("iceconnectionstatechange")
-		async def on_iceconnectionstatechange():
-			print("ICE connection state is", self.pc.iceConnectionState)
-			if self.pc.iceConnectionState == "failed" and self.pc:
-				print("close pc")
-				await self.pc.close()
+			elif self.pc.connectionState == "disconnect":
+				print("The webrtc connection has been closed.")
+		# @self.pc.on("iceconnectionstatechange")
+		# async def on_iceconnectionstatechange():
+		# 	print("ICE connection state is", self.pc.iceConnectionState)
+		# 	if self.pc.iceConnectionState == "failed" and self.pc:
+		# 		print("close pc")
+		# 		await self.pc.close()
+
+		# triggered when a stream track is added in the ios end
 		@self.pc.on("track")
 		async def on_track(track):
 			print("Track received")
@@ -132,32 +145,27 @@ class IPcam:
 			async def on_ended():
 				log_info("Track %s ended", track.kind)
 
+	# Trigger the establish of the webrtc peer connection
 	async def onConnection(self):
 		await self.sio.emit("on-connect")
 
-	async def createOffer(self):
-		# def add_tracks():
-		# 	if self.player and self.player.audio:
-		# 		self.pc.addTrack(self.player.audio)
-		# 	if self.player and self.player.video:
-		# 		self.pc.addTrack(self.player.video)
-		# 	else:
-		# 		self.pc.addTrack(FlagVideoStreamTrack())
-		print("creating offer")
-		# param = {"offerToReceiveVideo": 1,}
-		# addTrack()
-		# offer = await self.pc.createOffer()
-		# offer = await self.pc.createOffer()
-		# await self.pc.setLocalDescription(offer)
-		# print(offer)
-		# self.sendToPeer("offer-or-answer", offer)
-	async def siowait(self):
-		await self.sio.wait()
-	async def sioclose(self):
-		print("socketio disconnet")
-		await self.sio.disconnect()
-	async def pcclose(self):
-		if self.pc:
-			self.
-		else:
-			print("There is no peer connection")
+	async def takePhoto(self, name):
+		if self.pc and self.pc.connectionState == "connected":
+			print("close pc before")
+			await self.pc.close()
+		await self.sio.emit("take-photo", name)
+
+	# Set up the webrtc connection then play the video automatically. User can press 'a' to stop the preview and the webrtc connection will be closed
+	async def playVideo(self):
+		await self.setupPC()
+		await self.onConnection()
+
+	async def cameraSetting(self, settings):
+		print("change camera settings")
+		await self.sio.emit("setting", settings)
+
+	async def checkPeerState(self):
+		await self.sio.emit("check-peer-state")
+
+
+	

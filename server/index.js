@@ -29,6 +29,7 @@ let offerSocket = null;
 let onConnectNum = 0;
 let socketsLength = 0;
 let imgIndex = 0;
+let filename = null;
 
 io.on('connection', function (socket) {
   socket.on('join', function (data) {
@@ -45,6 +46,7 @@ io.on('connection', function (socket) {
     }
   })
 
+  // The python/web client will send a "on-connect" to the first and 
   socket.on('on-connect', () => {
     if (offerSocket === null) {
       offerSocket = socket.id
@@ -57,7 +59,7 @@ io.on('connection', function (socket) {
     }
     onConnectNum++
     console.log(`on-connect: onConnectNum is ${onConnectNum}/${socketsLength}`)
-    if (onConnectNum === socketsLength) {
+    if (onConnectNum === socketsLength && socketsLength >= 2) {
       // send established to both clients so that ios end can create an offer
       io.to(socket.id).emit('established')
       socket.to(socket.room).emit('established')
@@ -87,15 +89,26 @@ io.on('connection', function (socket) {
     console.log(`setting: ${data}`)
   })
 
-  socket.on('take-photo', () => {
+  socket.on('take-photo', (name) => {
     socket.to(socket.room).emit('take-photo')
     console.log('take-photo')
+    filename = name; // The file name will be used in upload function
   })
 
   socket.on('upload', (data) => {
+  	console.log("upload image")
     const base64Data = data.base64;
     let dataBuffer = new Buffer(base64Data, 'base64');
-    fs.writeFile(`../results/${imgIndex}.png`, dataBuffer, function(err) {
+    let newfilename;
+    if (filename == null) {
+    	newfilename = imgIndex.toString();
+    }
+    else {
+    	newfilename = filename;
+    	filename = null;
+    }
+    // Save the image in the server end. Note that a directory named "results" must exist in the same directory of server.
+    fs.writeFile(`../results/${newfilename}.png`, dataBuffer, function(err) {
       if(err){
         console.log(`save img failed: ${err}`)
       }else{
@@ -113,6 +126,12 @@ io.on('connection', function (socket) {
     onConnectNum = 0;
     offerSocket = null;
     console.log('disconnect')
+  })
+
+  // Prints some status in the ios client.
+  socket.on('check-peer-state', () => {
+    socket.to(socket.room).emit('check-peer-state')
+    console.log('check peer state')
   })
 });
 
