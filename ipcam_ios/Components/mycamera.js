@@ -55,7 +55,8 @@ class MyCamera extends React.Component {
               ? RNCamera.Constants.FlashMode.on
               : RNCamera.Constants.FlashMode.off
           }
-          exposure={this.props.exposure}
+          exposureISO={this.props.exposureISO}
+          exposureDuration={this.props.exposureDuration}
           autoFocus={
             this.props.autoFocus
               ? RNCamera.Constants.AutoFocus.on

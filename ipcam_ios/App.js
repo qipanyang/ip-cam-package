@@ -118,7 +118,8 @@ class VideoScreen extends React.Component {
       takePhoto: false,
       isFront: false,
       flash: true,
-      exposure: -1,
+      exposureDuration: -1,
+      exposureISO: -1,
       autoFocus: true,
       pictureSize: 'Photo',
     };
@@ -186,9 +187,13 @@ class VideoScreen extends React.Component {
         console.log('Set camera type to', data.isFront ? 'front' : 'back');
         this.setState({isFront: data.isFront});
       }
-      if ('exposure' in data) {
-        console.log('Set exposure to', data.exposure);
-        this.setState({exposure: data.exposure});
+      if ('exposureISO' in data) {
+        console.log('Set exposureISO to', data.exposureISO);
+        this.setState({exposureISO: data.exposureISO});
+      }
+      if ('exposureDuration' in data) {
+        console.log('Set exposure duration to', data.exposureDuration);
+        this.setState({exposureDuration: data.exposureDuration});
       }
       if ('autoFocus' in data) {
         console.log('Set autoFocus to', data.autoFocus);
@@ -355,7 +360,8 @@ class VideoScreen extends React.Component {
           takePhoto={this.state.takePhoto}
           isFront={this.state.isFront}
           flash={this.state.flash}
-          exposure={this.state.exposure}
+          exposureISO={this.state.exposureISO}
+          exposureDuration={this.state.exposureDuration}
           autoFocus={this.state.autoFocus}
           pictureSize={this.state.pictureSize}
           switchTakePhoto={this.switchTakePhoto}

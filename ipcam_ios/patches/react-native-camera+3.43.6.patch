@@ -1,0 +1,126 @@
+diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.h b/node_modules/react-native-camera/ios/RN/RNCamera.h
+index 9a40348..e9ec84b 100644
+--- a/node_modules/react-native-camera/ios/RN/RNCamera.h
++++ b/node_modules/react-native-camera/ios/RN/RNCamera.h
+@@ -38,7 +38,8 @@
+ @property(assign, nonatomic) float focusDepth;
+ @property(assign, nonatomic) NSInteger whiteBalance;
+ @property(nonatomic, strong) RNCustomWhiteBalanceSettings *customWhiteBalanceSettings;
+-@property(assign, nonatomic) float exposure;
++@property(assign, nonatomic) float exposureDuration;
++@property(assign, nonatomic) float exposureISO;
+ @property(assign, nonatomic) float exposureIsoMin;
+ @property(assign, nonatomic) float exposureIsoMax;
+ @property(assign, nonatomic) AVCaptureSessionPreset pictureSize;
+diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.m b/node_modules/react-native-camera/ios/RN/RNCamera.m
+index 3725edb..0273b39 100644
+--- a/node_modules/react-native-camera/ios/RN/RNCamera.m
++++ b/node_modules/react-native-camera/ios/RN/RNCamera.m
+@@ -83,7 +83,8 @@ - (id)initWithBridge:(RCTBridge *)bridge
+         [self addGestureRecognizer:doubleTapHandler];
+ 
+         self.autoFocus = -1;
+-        self.exposure = -1;
++        self.exposureDuration = -1;
++        self.exposureISO = -1;
+         self.presetCamera = AVCaptureDevicePositionUnspecified;
+         self.cameraId = @"";
+         self.isFocusedOnPoint = NO;
+@@ -668,37 +669,53 @@ - (void)updateExposure
+     [self lockDevice:device andApplySettings:^{
+         // Check that either no explicit exposure-val has been set yet
+         // or that it has been reset. Check for > 1 is only a guard.
+-        if(self.exposure < 0 || self.exposure > 1){
++        if((self.exposureISO < 0 || self.exposureISO > 1) && self.exposureDuration == -1){
+             [device setExposureMode:AVCaptureExposureModeContinuousAutoExposure];
+             return;
+         }
+-
+-        // Lazy init of range.
+-        if(!self.exposureIsoMin){ self.exposureIsoMin = device.activeFormat.minISO; }
+-        if(!self.exposureIsoMax){ self.exposureIsoMax = device.activeFormat.maxISO; }
+-
+-        // Get a valid ISO-value in range from min to max. After we mapped the exposure
+-        // (a val between 0 - 1), the result gets corrected by the offset from 0, which
+-        // is the min-ISO-value.
+-        float appliedExposure = (self.exposureIsoMax - self.exposureIsoMin) * self.exposure + self.exposureIsoMin;
+-
+-        // Make sure we're in AVCaptureExposureModeCustom, else the ISO + duration time won't apply.
+-        // Also make sure the device can set exposure
+-        if([device isExposureModeSupported:AVCaptureExposureModeCustom]){
+-            if(device.exposureMode != AVCaptureExposureModeCustom){
+-                [device setExposureMode:AVCaptureExposureModeCustom];
++        else{
++            if([device isExposureModeSupported:AVCaptureExposureModeCustom]){
++                if(device.exposureMode != AVCaptureExposureModeCustom){
++                    [device setExposureMode:AVCaptureExposureModeCustom];
++                }
++            } else {
++                RCTLog(@"Device does not support AVCaptureExposureModeCustom");
++                return;
+             }
+-
+-            // Only set the ISO for now, duration will be default as a change might affect frame rate.
++            CMTime Duration = self.exposureDuration == -1 ? AVCaptureExposureDurationCurrent : CMTimeMake(1,self.exposureDuration);
++            float ISO = AVCaptureISOCurrent;
++            if (self.exposureISO <= 1 && self.exposureISO >= 0) {
++                if(!self.exposureIsoMin){ self.exposureIsoMin = device.activeFormat.minISO; }
++                if(!self.exposureIsoMax){ self.exposureIsoMax = device.activeFormat.maxISO; }
++
++                // Get a valid ISO-value in range from min to max. After we mapped the exposure
++                // (a val between 0 - 1), the result gets corrected by the offset from 0, which
++                // is the min-ISO-value.
++                ISO = (self.exposureIsoMax - self.exposureIsoMin) * self.exposureISO + self.exposureIsoMin;
++            }
++            if (ISO > device.activeFormat.maxISO) {
++                ISO = device.activeFormat.maxISO;
++            }
++            if (ISO < device.activeFormat.minISO) {
++                ISO = device.activeFormat.minISO;
++            }
++            if (CMTimeGetSeconds(Duration) > CMTimeGetSeconds(device.activeFormat.maxExposureDuration)) {
++                Duration = device.activeFormat.maxExposureDuration;
++            }
++            if (CMTimeGetSeconds(Duration) < CMTimeGetSeconds(device.activeFormat.minExposureDuration)) {
++                Duration = device.activeFormat.minExposureDuration;
++            }
++            NSLog(@"current exposure duration: %f", CMTimeGetSeconds(Duration));
++            NSLog(@"set applied ISO: %f", ISO);
++            NSLog(@"maxISO is %f, minIOS is %f", self.exposureIsoMax, self.exposureIsoMin);
++            NSLog(@"max duration is %f, min duration is %f", CMTimeGetSeconds(device.activeFormat.maxExposureDuration), CMTimeGetSeconds(device.activeFormat.minExposureDuration));
+             @try{
+-                [device setExposureModeCustomWithDuration:AVCaptureExposureDurationCurrent ISO:appliedExposure completionHandler:nil];
++                
++                [device setExposureModeCustomWithDuration:Duration ISO:ISO completionHandler:nil];
+             }
+             @catch(NSException *exception){
+                 RCTLogError(@"Failed to update exposure: %@", exception);
+             }
+-
+-        } else {
+-            RCTLog(@"Device does not support AVCaptureExposureModeCustom");
+         }
+     }];
+ }
+diff --git a/node_modules/react-native-camera/ios/RN/RNCameraManager.m b/node_modules/react-native-camera/ios/RN/RNCameraManager.m
+index 6a51928..14ebe4e 100644
+--- a/node_modules/react-native-camera/ios/RN/RNCameraManager.m
++++ b/node_modules/react-native-camera/ios/RN/RNCameraManager.m
+@@ -263,9 +263,15 @@ + (NSDictionary *)barcodeDetectorConstants
+     [view updateWhiteBalance];
+ }
+ 
+-RCT_CUSTOM_VIEW_PROPERTY(exposure, NSNumber, RNCamera)
++RCT_CUSTOM_VIEW_PROPERTY(exposureISO, NSNumber, RNCamera)
+ {
+-    [view setExposure:[RCTConvert float:json]];
++    [view setExposureISO:[RCTConvert float:json]];
++    [view updateExposure];
++}
++
++RCT_CUSTOM_VIEW_PROPERTY(exposureDuration, NSNumber, RNCamera)
++{
++    [view setExposureDuration:[RCTConvert float:json]];
+     [view updateExposure];
+ }
+ 
