@@ -5,6 +5,7 @@ from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 import asyncio
 import cv2
 import socketio
+import base64
 
 pc_config = {
     "iceServers": [
@@ -163,6 +164,14 @@ class IPcam:
 	async def cameraSetting(self, settings):
 		print("change camera settings")
 		await self.sio.emit("setting", settings)
+
+	async def displayImage(self, image_path):
+		print("pass the image", image_path)
+		img = cv2.imread(image_path)
+		# print(img)
+		encoded_string = base64.b64encode(cv2.imencode('.jpeg', img)[1]).decode("utf-8") # have to add this decode
+
+		await self.sio.emit("display", encoded_string)
 
 	async def checkPeerState(self):
 		await self.sio.emit("check-peer-state")

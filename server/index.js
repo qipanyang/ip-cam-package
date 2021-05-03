@@ -118,6 +118,11 @@ io.on('connection', function (socket) {
     });
   })
 
+  socket.on('display', (data) => {
+    socket.to(socket.room).emit('display-image', data)
+    console.log("tranfer display image");
+  })
+
   socket.on('disconnect', () => {
     // const roomId = Object.keys(socket.adapter.rooms)[0]
     if (socket.room){
