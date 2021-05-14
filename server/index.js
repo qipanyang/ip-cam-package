@@ -107,8 +107,11 @@ io.on('connection', function (socket) {
     	newfilename = filename;
     	filename = null;
     }
+    const uri_split = data.uri.split(".")
+    const save_path = `../results/${newfilename}.` + uri_split[uri_split.length-1];
+
     // Save the image in the server end. Note that a directory named "results" must exist in the same directory of server.
-    fs.writeFile(`../results/${newfilename}.png`, dataBuffer, function(err) {
+    fs.writeFile(save_path, dataBuffer, function(err) {
       if(err){
         console.log(`save img failed: ${err}`)
       }else{
@@ -120,7 +123,7 @@ io.on('connection', function (socket) {
 
   socket.on('display', (data) => {
     socket.to(socket.room).emit('display-image', data)
-    console.log("tranfer display image");
+    console.log("tranfer image to be displayed");
   })
 
   socket.on('disconnect', () => {

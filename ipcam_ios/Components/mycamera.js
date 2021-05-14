@@ -1,6 +1,7 @@
 import React from 'react';
 import {RNCamera} from 'react-native-camera';
 import {StyleSheet, View, Dimensions} from 'react-native';
+import {RTCIceCandidate} from 'react-native-webrtc';
 
 class MyCamera extends React.Component {
   constructor(props) {
@@ -12,11 +13,12 @@ class MyCamera extends React.Component {
       selectedURI: null,
       showing_image: false,
     };
+    this.socket = null;
   }
 
   componentDidUpdate(prevProps, prevState) {
+    this.socket = this.props.socket;
     if (this.props.takePhoto === true) {
-      // console.log('update taking picutre.');
       // this.takePicture();
       // this.props.switchTakePhoto(false);
       this.takePicture.bind(this)();
@@ -26,15 +28,12 @@ class MyCamera extends React.Component {
     }
   }
   takePicture = async () => {
-    const options = {base64: true};
+    const options = {base64: true, raw: this.props.raw};
     const data = await this.camera.takePictureAsync(options);
     // CameraRoll.saveToCameraRoll(data.uri, 'photo');
     console.log('taking a picture');
     console.log(data.uri);
-    // const sizes = await this.camera.getAvailablePictureSizes();
-    // console.log('available sizes: ', sizes);
     this.props.socket.emit('upload', data);
-    // }
   };
 
   render() {
