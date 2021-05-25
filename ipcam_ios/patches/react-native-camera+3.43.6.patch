@@ -1,8 +1,25 @@
+diff --git a/node_modules/react-native-camera/.DS_Store b/node_modules/react-native-camera/.DS_Store
+new file mode 100644
+index 0000000..c896e79
+Binary files /dev/null and b/node_modules/react-native-camera/.DS_Store differ
+diff --git a/node_modules/react-native-camera/ios/.DS_Store b/node_modules/react-native-camera/ios/.DS_Store
+new file mode 100644
+index 0000000..8dfa319
+Binary files /dev/null and b/node_modules/react-native-camera/ios/.DS_Store differ
 diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.h b/node_modules/react-native-camera/ios/RN/RNCamera.h
-index 9a40348..e9ec84b 100644
+index 9a40348..de380d4 100644
 --- a/node_modules/react-native-camera/ios/RN/RNCamera.h
 +++ b/node_modules/react-native-camera/ios/RN/RNCamera.h
-@@ -38,7 +38,8 @@
+@@ -18,6 +18,8 @@
+ @property(nonatomic, strong) AVCaptureSession *session;
+ @property(nonatomic, strong) AVCaptureDeviceInput *videoCaptureDeviceInput;
+ @property(nonatomic, strong) AVCaptureDeviceInput *audioCaptureDeviceInput;
++
++@property(nonatomic, strong) AVCapturePhotoOutput *photoOutput;
+ @property(nonatomic, strong) AVCaptureStillImageOutput *stillImageOutput;
+ @property(nonatomic, strong) AVCaptureMovieFileOutput *movieFileOutput;
+ @property(nonatomic, strong) AVCaptureMetadataOutput *metadataOutput;
+@@ -38,7 +40,8 @@
  @property(assign, nonatomic) float focusDepth;
  @property(assign, nonatomic) NSInteger whiteBalance;
  @property(nonatomic, strong) RNCustomWhiteBalanceSettings *customWhiteBalanceSettings;
@@ -12,11 +29,42 @@ index 9a40348..e9ec84b 100644
  @property(assign, nonatomic) float exposureIsoMin;
  @property(assign, nonatomic) float exposureIsoMax;
  @property(assign, nonatomic) AVCaptureSessionPreset pictureSize;
+@@ -81,6 +84,9 @@
+ - (void)updateGoogleVisionBarcodeType:(id)requestedTypes;
+ - (void)updateGoogleVisionBarcodeMode:(id)requestedMode;
+ 
++- (void)takeRawPicture:(NSDictionary *)options
++            resolve:(RCTPromiseResolveBlock)resolve
++             reject:(RCTPromiseRejectBlock)reject;
+ - (void)takePicture:(NSDictionary *)options
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject;
 diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.m b/node_modules/react-native-camera/ios/RN/RNCamera.m
-index 3725edb..0273b39 100644
+index 3725edb..4c5e90e 100644
 --- a/node_modules/react-native-camera/ios/RN/RNCamera.m
 +++ b/node_modules/react-native-camera/ios/RN/RNCamera.m
-@@ -83,7 +83,8 @@ - (id)initWithBridge:(RCTBridge *)bridge
+@@ -45,6 +45,11 @@ @interface RNCamera ()
+ @property (nonatomic, assign) BOOL isExposedOnPoint;
+ @property (nonatomic, assign) BOOL invertImageData;
+ 
++@property (nonatomic, assign) NSData *dngPhotoData;
++@property (nonatomic, copy) NSDictionary *myoptions;
++@property (nonatomic, copy) RCTPromiseResolveBlock myresolve;
++@property (nonatomic, assign) BOOL enableRaw;
++
+ @end
+ 
+ @implementation RNCamera
+@@ -55,6 +60,8 @@ @implementation RNCamera
+ BOOL _sessionInterrupted = NO;
+ 
+ 
++
++
+ - (id)initWithBridge:(RCTBridge *)bridge
+ {
+     if ((self = [super init])) {
+@@ -83,7 +90,8 @@ - (id)initWithBridge:(RCTBridge *)bridge
          [self addGestureRecognizer:doubleTapHandler];
  
          self.autoFocus = -1;
@@ -26,7 +74,7 @@ index 3725edb..0273b39 100644
          self.presetCamera = AVCaptureDevicePositionUnspecified;
          self.cameraId = @"";
          self.isFocusedOnPoint = NO;
-@@ -668,37 +669,53 @@ - (void)updateExposure
+@@ -668,37 +676,54 @@ - (void)updateExposure
      [self lockDevice:device andApplySettings:^{
          // Check that either no explicit exposure-val has been set yet
          // or that it has been reset. Check for > 1 is only a guard.
@@ -58,9 +106,7 @@ index 3725edb..0273b39 100644
 +            } else {
 +                RCTLog(@"Device does not support AVCaptureExposureModeCustom");
 +                return;
-             }
--
--            // Only set the ISO for now, duration will be default as a change might affect frame rate.
++            }
 +            CMTime Duration = self.exposureDuration == -1 ? AVCaptureExposureDurationCurrent : CMTimeMake(1,self.exposureDuration);
 +            float ISO = AVCaptureISOCurrent;
 +            if (self.exposureISO <= 1 && self.exposureISO >= 0) {
@@ -83,15 +129,17 @@ index 3725edb..0273b39 100644
 +            }
 +            if (CMTimeGetSeconds(Duration) < CMTimeGetSeconds(device.activeFormat.minExposureDuration)) {
 +                Duration = device.activeFormat.minExposureDuration;
-+            }
-+            NSLog(@"current exposure duration: %f", CMTimeGetSeconds(Duration));
-+            NSLog(@"set applied ISO: %f", ISO);
-+            NSLog(@"maxISO is %f, minIOS is %f", self.exposureIsoMax, self.exposureIsoMin);
-+            NSLog(@"max duration is %f, min duration is %f", CMTimeGetSeconds(device.activeFormat.maxExposureDuration), CMTimeGetSeconds(device.activeFormat.minExposureDuration));
+             }
+              
+-            // Only set the ISO for now, duration will be default as a change might affect frame rate.
++//             NSLog(@"maxISO is %f, minIOS is %f", self.exposureIsoMax, self.exposureIsoMin);
++//             NSLog(@"max duration is %f, min duration is %f", CMTimeGetSeconds(device.activeFormat.maxExposureDuration), CMTimeGetSeconds(device.activeFormat.minExposureDuration));
              @try{
 -                [device setExposureModeCustomWithDuration:AVCaptureExposureDurationCurrent ISO:appliedExposure completionHandler:nil];
-+                
++
 +                [device setExposureModeCustomWithDuration:Duration ISO:ISO completionHandler:nil];
++                NSLog(@"set exposure duration to %f", CMTimeGetSeconds(Duration));
++                NSLog(@"set applied ISO to %f", ISO);
              }
              @catch(NSException *exception){
                  RCTLogError(@"Failed to update exposure: %@", exception);
@@ -102,8 +150,199 @@ index 3725edb..0273b39 100644
          }
      }];
  }
+@@ -711,6 +736,8 @@ - (void)updatePictureSize
+     if (self.session.sessionPreset != preset) {
+         [self updateSessionPreset: preset];
+     }
++    NSLog(@"update picture size to %@", preset);
++
+ }
+ 
+ 
+@@ -726,6 +753,118 @@ - (void)updateCaptureAudio
+     });
+ }
+ 
++- (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingPhoto:(AVCapturePhoto *)photo error:(nullable NSError *)error
++{
++    NSLog(@"in capture output!!!!!!!!!!");
++    if ([self.myoptions[@"raw"] boolValue] != [photo isRawPhoto] && self.enableRaw) return;
++    self.dngPhotoData = [photo fileDataRepresentation];
++    UIImage *takenImage = [UIImage imageWithData:self.dngPhotoData];
++//    UIImageWriteToSavedPhotosAlbum(takenImage, nil, nil, nil);
++//    CGImageRef takenCGImage = takenImage.CGImage;
++//    CGSize previewSize;
++//    if (UIInterfaceOrientationIsPortrait([[UIApplication sharedApplication] statusBarOrientation])) {
++//        previewSize = CGSizeMake(self.previewLayer.frame.size.height, self.previewLayer.frame.size.width);
++//    } else {
++//        previewSize = CGSizeMake(self.previewLayer.frame.size.width, self.previewLayer.frame.size.height);
++//    }
++//    CGRect cropRect = CGRectMake(0, 0, CGImageGetWidth(takenCGImage), CGImageGetHeight(takenCGImage));
++//    CGRect croppedSize = AVMakeRectWithAspectRatioInsideRect(previewSize, cropRect);
++//    takenImage = [RNImageUtils cropImage:takenImage toRect:croppedSize];
++//
++//    // apply other image settings
++//    bool resetOrientation = NO;
++//    if ([self.myoptions[@"mirrorImage"] boolValue]) {
++//        takenImage = [RNImageUtils mirrorImage:takenImage];
++//    }
++//    if ([self.myoptions[@"forceUpOrientation"] boolValue]) {
++//        takenImage = [RNImageUtils forceUpOrientation:takenImage];
++//        resetOrientation = YES;
++//    }
++//    if ([self.myoptions[@"width"] integerValue]) {
++//        takenImage = [RNImageUtils scaleImage:takenImage toWidth:[self.myoptions[@"width"] integerValue]];
++//        resetOrientation = YES;
++//    }
++
++    //write final image data with metadata to our destination
++    NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
++    NSString *path = nil;
++    if (self.myoptions[@"path"]) {
++        path = self.myoptions[@"path"];
++    }
++    else{
++        if ([photo isRawPhoto]) {
++            path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".dng"];
++        }
++        else {
++            path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".jpg"];
++        }
++        
++    }
++    if (![self.myoptions[@"doNotSave"] boolValue]) {
++        response[@"uri"] = [RNImageUtils writeImage:self.dngPhotoData toPath:path];
++//        response[@"uri"] = @"file:///var/mobile/Containers/Data/Application/DACCF56F-C371-4796-8AD2-B73EE8BF9953/Library/Caches/Camera/6C95E276-5B82-4474-9E75-FA57CB4BBE23.dng";
++    }
++    response[@"width"] = @(takenImage.size.width);
++    response[@"height"] = @(takenImage.size.height);
++    
++
++    if ([self.myoptions[@"base64"] boolValue]) {
++        response[@"base64"] = [self.dngPhotoData base64EncodedStringWithOptions:0];
++    }
++    self.orientation = nil;
++    self.deviceOrientation = nil;
++    self.myresolve(response);
++}
++
++- (void)takeRawPicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
++{
++    self.myoptions = options;
++    self.myresolve = resolve;
++    // if video device is not set, reject
++    if(self.videoCaptureDeviceInput == nil || !self.session.isRunning){
++        reject(@"E_IMAGE_CAPTURE_FAILED", @"Camera is not ready.", nil);
++        return;
++    }
++    
++    if (!self.photoOutput){
++        self.photoOutput = [[AVCapturePhotoOutput alloc] init];
++
++        if ([self.session canAddOutput:self.photoOutput]) {
++            [self.session addOutput:self.photoOutput];
++            self.photoOutput = self.photoOutput;
++            NSLog(@"can add photo output");
++        }
++        else {
++            NSLog(@"cannot add photo output");
++            return;
++        }
++    }
++    NSInteger orientation = [options[@"orientation"] integerValue];
++    AVCaptureConnection *connection = [self.photoOutput connectionWithMediaType:AVMediaTypeVideo];
++        [connection setVideoOrientation:orientation];
++    
++    AVCapturePhotoSettings *photoSettings = [[AVCapturePhotoSettings alloc] init];
++//    NSLog(@"available of raw format: %@", (OSType)(((NSNumber *)self.photoOutput.availableRawPhotoPixelFormatTypes[0]).unsignedLongValue));
++    if (self.photoOutput.availableRawPhotoPixelFormatTypes.count > 0 ) {
++        photoSettings = [AVCapturePhotoSettings photoSettingsWithRawPixelFormatType:(OSType)(((NSNumber *)self.photoOutput.availableRawPhotoPixelFormatTypes[0]).unsignedLongValue) processedFormat:@{ AVVideoCodecKey : AVVideoCodecJPEG }];
++        NSLog(@"the number of available of raw format: %lu", self.photoOutput.availableRawPhotoPixelFormatTypes.count);
++    //        NSLog(self.photoOutput.availableRawPhotoPixelFormatTypes[0].unsignedLongValue);
++        self.enableRaw = TRUE;
++        }
++    else {
++//        NSString* key = (NSString*)kCVPixelBufferPixelFormatTypeKey;
++//        NSNumber* value = [NSNumber numberWithUnsignedInt:kCVPixelFormatType_32BGRA];
++//        if (photoSettings.previewPhotoFormat.count>0) {
++//            photoSettings.previewPhotoFormat =
++//        }
++//        photoSettings = [AVCapturePhotoSettings photoSettingsWithFormat:@{key : value} ];
++        photoSettings = [AVCapturePhotoSettings photoSettingsWithFormat: @{ AVVideoCodecKey : AVVideoCodecJPEG}];
++        NSLog(@"no availableRawPhotoPixelFormatTypes!");
++        self.enableRaw = FALSE;
++    }
++    [self.photoOutput capturePhotoWithSettings:photoSettings delegate: self];
++}
++
+ - (void)takePictureWithOrientation:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject{
+     [self.sensorOrientationChecker getDeviceOrientationWithBlock:^(UIInterfaceOrientation orientation) {
+         NSMutableDictionary *tmpOptions = [options mutableCopy];
+@@ -737,7 +876,6 @@ - (void)takePictureWithOrientation:(NSDictionary *)options resolve:(RCTPromiseRe
+         [self takePicture:tmpOptions resolve:resolve reject:reject];
+     }];
+ }
+-
+ - (void)takePicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+ {
+     // if video device is not set, reject
+@@ -998,6 +1136,7 @@ - (void)takePicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)reso
+     }
+ }
+ 
++
+ - (void)recordWithOrientation:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject{
+     [self.sensorOrientationChecker getDeviceOrientationWithBlock:^(UIInterfaceOrientation orientation) {
+         NSMutableDictionary *tmpOptions = [options mutableCopy];
+@@ -1306,13 +1445,32 @@ - (void)startSession
+         }
+         
+         
+-        AVCaptureStillImageOutput *stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
+-        if ([self.session canAddOutput:stillImageOutput]) {
+-            stillImageOutput.outputSettings = @{AVVideoCodecKey : AVVideoCodecJPEG, AVVideoQualityKey: @(1.0)};
+-            [self.session addOutput:stillImageOutput];
+-            [stillImageOutput setHighResolutionStillImageOutputEnabled:YES];
+-            self.stillImageOutput = stillImageOutput;
++//        AVCaptureStillImageOutput *stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
++//        if ([self.session canAddOutput:stillImageOutput]) {
++//            stillImageOutput.outputSettings = @{AVVideoCodecKey : AVVideoCodecJPEG, AVVideoQualityKey: @(1.0)};
++//            [self.session addOutput:stillImageOutput];
++//            [stillImageOutput setHighResolutionStillImageOutputEnabled:YES];
++//            self.stillImageOutput = stillImageOutput;
++//            NSLog(@"can add still image output");
++//        }
++//        else {
++//            NSLog(@"cannot add still image output");
++//            return;
++//        }
++
++        self.photoOutput = [[AVCapturePhotoOutput alloc] init];
++
++        if ([self.session canAddOutput:self.photoOutput]) {
++            [self.session addOutput:self.photoOutput];
++            self.photoOutput = self.photoOutput;
++            NSLog(@"can add photo output");
+         }
++        else {
++            NSLog(@"cannot add photo output");
++            return;
++        }
++        
++        
+ 
+         // If AVCaptureVideoDataOutput is not required because of Google Vision
+         // (see comment in -record), we go ahead and add the AVCaptureMovieFileOutput
+@@ -1606,6 +1764,7 @@ - (void)updateSessionPreset:(AVCaptureSessionPreset)preset
+             if ([self.session canSetSessionPreset:preset]) {
+                 [self.session beginConfiguration];
+                 self.session.sessionPreset = preset;
++                NSLog(@"set the session preset to %@", preset);
+                 [self.session commitConfiguration];
+ 
+                 // Need to update these since it gets reset on preset change
 diff --git a/node_modules/react-native-camera/ios/RN/RNCameraManager.m b/node_modules/react-native-camera/ios/RN/RNCameraManager.m
-index 6a51928..14ebe4e 100644
+index 6a51928..cdd4206 100644
 --- a/node_modules/react-native-camera/ios/RN/RNCameraManager.m
 +++ b/node_modules/react-native-camera/ios/RN/RNCameraManager.m
 @@ -263,9 +263,15 @@ + (NSDictionary *)barcodeDetectorConstants
@@ -124,3 +363,64 @@ index 6a51928..14ebe4e 100644
      [view updateExposure];
  }
  
+@@ -407,7 +413,15 @@ + (NSDictionary *)barcodeDetectorConstants
+                 resolve(response);
+             }
+ #else
+-            [view takePicture:options resolve:resolve reject:reject];
++//            if ([options[@"raw"] boolValue]) {
++//                NSLog(@"taking raw picture");
++                [view takeRawPicture:options resolve:resolve reject:reject];
++//            }
++//            else{
++//                NSLog(@"taking compressed picture");
++//                [view takePicture:options resolve:resolve reject:reject];
++//            }
++//
+ #endif
+         }
+     }];
+diff --git a/node_modules/react-native-camera/src/RNCamera.js b/node_modules/react-native-camera/src/RNCamera.js
+index b241b19..b340d87 100644
+--- a/node_modules/react-native-camera/src/RNCamera.js
++++ b/node_modules/react-native-camera/src/RNCamera.js
+@@ -268,7 +268,8 @@ type PropsType = typeof View.props & {
+   faceDetectionMode?: number,
+   trackingEnabled?: boolean,
+   flashMode?: number | string,
+-  exposure?: number,
++  exposureISO?: number,
++  exposureDuration?: number,
+   barCodeTypes?: Array<string>,
+   googleVisionBarcodeType?: number,
+   googleVisionBarcodeMode?: number,
+@@ -382,7 +383,8 @@ export default class Camera extends React.Component<PropsType, StateType> {
+   static ConversionTables = {
+     type: CameraManager.Type,
+     flashMode: CameraManager.FlashMode,
+-    exposure: CameraManager.Exposure,
++    exposureISO: CameraManager.ExposureISO,
++    exposureDuration: CameraManager.ExposureDuration,
+     autoFocus: CameraManager.AutoFocus,
+     whiteBalance: CameraManager.WhiteBalance,
+     faceDetectionMode: (CameraManager.FaceDetection || {}).Mode,
+@@ -426,7 +428,8 @@ export default class Camera extends React.Component<PropsType, StateType> {
+     type: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+     cameraId: PropTypes.string,
+     flashMode: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+-    exposure: PropTypes.number,
++    exposureISO: PropTypes.number,
++    exposureDuration: PropTypes.number,
+     whiteBalance: PropTypes.oneOfType([PropTypes.string, PropTypes.number,
+       PropTypes.shape({ temperature: PropTypes.number, tint: PropTypes.number,
+         redGainOffset: PropTypes.number,
+@@ -462,7 +465,8 @@ export default class Camera extends React.Component<PropsType, StateType> {
+     cameraId: '',
+     autoFocus: CameraManager.AutoFocus.on,
+     flashMode: CameraManager.FlashMode.off,
+-    exposure: -1,
++    exposureISO: -1,
++    exposureDuration: -1,
+     whiteBalance: CameraManager.WhiteBalance.auto,
+     faceDetectionMode: (CameraManager.FaceDetection || {}).fast,
+     barCodeTypes: Object.values(CameraManager.BarCodeType),
