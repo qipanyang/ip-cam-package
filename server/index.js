@@ -46,7 +46,7 @@ io.on('connection', function (socket) {
     }
   })
 
-  // The python/web client will send a "on-connect" to the first and 
+  // The python/web client will send a "on-connect" to the server first. When the server receives both, an "established" message will be sent to both ends.
   socket.on('on-connect', () => {
     if (offerSocket === null) {
       offerSocket = socket.id
@@ -95,6 +95,7 @@ io.on('connection', function (socket) {
     filename = name; // The file name will be used in upload function
   })
 
+  // send the captured image from iOS to laptop and save it in a directory named "results"
   socket.on('upload', (data) => {
   	console.log("upload image")
     const base64Data = data.base64;
@@ -121,9 +122,10 @@ io.on('connection', function (socket) {
     });
   })
 
+  // Transfer the image from laptop to display on the screen of Apple device
   socket.on('display', (data) => {
     socket.to(socket.room).emit('display-image', data)
-    console.log("tranfer image to be displayed");
+    console.log("transfer image to be displayed");
   })
 
   socket.on('disconnect', () => {
