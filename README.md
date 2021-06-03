@@ -86,5 +86,7 @@ The IPcam class is in ./ipcam.py
 
 An usage example is in ./ipcam-test.ipynb
 
+Note that the raw image capture is not enabled after playing preview. To see more details, please check the second point in the others section in the document. 
+
 ## Acknowledgements
 This project is led by Panyang Qi (Computer Science MS, Northwestern University) and Bingyu Jiang (Electronic Engineer MS, Northwestern University) with the assistance of Dr. Oliver Cossairt, Dr. Florian Willomitzer, Florian Schiffers and others from the Computational Photography Lab at Northwestern University.
