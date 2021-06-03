@@ -1,10 +1,10 @@
 diff --git a/node_modules/react-native-camera/.DS_Store b/node_modules/react-native-camera/.DS_Store
 new file mode 100644
-index 0000000..c896e79
+index 0000000..9786050
 Binary files /dev/null and b/node_modules/react-native-camera/.DS_Store differ
 diff --git a/node_modules/react-native-camera/ios/.DS_Store b/node_modules/react-native-camera/ios/.DS_Store
 new file mode 100644
-index 0000000..8dfa319
+index 0000000..10d66b2
 Binary files /dev/null and b/node_modules/react-native-camera/ios/.DS_Store differ
 diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.h b/node_modules/react-native-camera/ios/RN/RNCamera.h
 index 9a40348..de380d4 100644
@@ -40,7 +40,7 @@ index 9a40348..de380d4 100644
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject;
 diff --git a/node_modules/react-native-camera/ios/RN/RNCamera.m b/node_modules/react-native-camera/ios/RN/RNCamera.m
-index 3725edb..4c5e90e 100644
+index 3725edb..2554480 100644
 --- a/node_modules/react-native-camera/ios/RN/RNCamera.m
 +++ b/node_modules/react-native-camera/ios/RN/RNCamera.m
 @@ -45,6 +45,11 @@ @interface RNCamera ()
@@ -130,7 +130,7 @@ index 3725edb..4c5e90e 100644
 +            if (CMTimeGetSeconds(Duration) < CMTimeGetSeconds(device.activeFormat.minExposureDuration)) {
 +                Duration = device.activeFormat.minExposureDuration;
              }
-              
+ 
 -            // Only set the ISO for now, duration will be default as a change might affect frame rate.
 +//             NSLog(@"maxISO is %f, minIOS is %f", self.exposureIsoMax, self.exposureIsoMin);
 +//             NSLog(@"max duration is %f, min duration is %f", CMTimeGetSeconds(device.activeFormat.maxExposureDuration), CMTimeGetSeconds(device.activeFormat.minExposureDuration));
@@ -159,7 +159,7 @@ index 3725edb..4c5e90e 100644
  }
  
  
-@@ -726,6 +753,118 @@ - (void)updateCaptureAudio
+@@ -726,6 +753,93 @@ - (void)updateCaptureAudio
      });
  }
  
@@ -170,30 +170,6 @@ index 3725edb..4c5e90e 100644
 +    self.dngPhotoData = [photo fileDataRepresentation];
 +    UIImage *takenImage = [UIImage imageWithData:self.dngPhotoData];
 +//    UIImageWriteToSavedPhotosAlbum(takenImage, nil, nil, nil);
-+//    CGImageRef takenCGImage = takenImage.CGImage;
-+//    CGSize previewSize;
-+//    if (UIInterfaceOrientationIsPortrait([[UIApplication sharedApplication] statusBarOrientation])) {
-+//        previewSize = CGSizeMake(self.previewLayer.frame.size.height, self.previewLayer.frame.size.width);
-+//    } else {
-+//        previewSize = CGSizeMake(self.previewLayer.frame.size.width, self.previewLayer.frame.size.height);
-+//    }
-+//    CGRect cropRect = CGRectMake(0, 0, CGImageGetWidth(takenCGImage), CGImageGetHeight(takenCGImage));
-+//    CGRect croppedSize = AVMakeRectWithAspectRatioInsideRect(previewSize, cropRect);
-+//    takenImage = [RNImageUtils cropImage:takenImage toRect:croppedSize];
-+//
-+//    // apply other image settings
-+//    bool resetOrientation = NO;
-+//    if ([self.myoptions[@"mirrorImage"] boolValue]) {
-+//        takenImage = [RNImageUtils mirrorImage:takenImage];
-+//    }
-+//    if ([self.myoptions[@"forceUpOrientation"] boolValue]) {
-+//        takenImage = [RNImageUtils forceUpOrientation:takenImage];
-+//        resetOrientation = YES;
-+//    }
-+//    if ([self.myoptions[@"width"] integerValue]) {
-+//        takenImage = [RNImageUtils scaleImage:takenImage toWidth:[self.myoptions[@"width"] integerValue]];
-+//        resetOrientation = YES;
-+//    }
 +
 +    //write final image data with metadata to our destination
 +    NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
@@ -208,7 +184,7 @@ index 3725edb..4c5e90e 100644
 +        else {
 +            path = [RNFileSystem generatePathInDirectory:[[RNFileSystem cacheDirectoryPath] stringByAppendingPathComponent:@"Camera"] withExtension:@".jpg"];
 +        }
-+        
++
 +    }
 +    if (![self.myoptions[@"doNotSave"] boolValue]) {
 +        response[@"uri"] = [RNImageUtils writeImage:self.dngPhotoData toPath:path];
@@ -216,14 +192,14 @@ index 3725edb..4c5e90e 100644
 +    }
 +    response[@"width"] = @(takenImage.size.width);
 +    response[@"height"] = @(takenImage.size.height);
-+    
++
 +
 +    if ([self.myoptions[@"base64"] boolValue]) {
 +        response[@"base64"] = [self.dngPhotoData base64EncodedStringWithOptions:0];
 +    }
 +    self.orientation = nil;
 +    self.deviceOrientation = nil;
-+    self.myresolve(response);
++    self.myresolve(response); // Outputs the response to outside caller.
 +}
 +
 +- (void)takeRawPicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
@@ -235,7 +211,6 @@ index 3725edb..4c5e90e 100644
 +        reject(@"E_IMAGE_CAPTURE_FAILED", @"Camera is not ready.", nil);
 +        return;
 +    }
-+    
 +    if (!self.photoOutput){
 +        self.photoOutput = [[AVCapturePhotoOutput alloc] init];
 +
@@ -252,7 +227,7 @@ index 3725edb..4c5e90e 100644
 +    NSInteger orientation = [options[@"orientation"] integerValue];
 +    AVCaptureConnection *connection = [self.photoOutput connectionWithMediaType:AVMediaTypeVideo];
 +        [connection setVideoOrientation:orientation];
-+    
++
 +    AVCapturePhotoSettings *photoSettings = [[AVCapturePhotoSettings alloc] init];
 +//    NSLog(@"available of raw format: %@", (OSType)(((NSNumber *)self.photoOutput.availableRawPhotoPixelFormatTypes[0]).unsignedLongValue));
 +    if (self.photoOutput.availableRawPhotoPixelFormatTypes.count > 0 ) {
@@ -278,7 +253,7 @@ index 3725edb..4c5e90e 100644
  - (void)takePictureWithOrientation:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject{
      [self.sensorOrientationChecker getDeviceOrientationWithBlock:^(UIInterfaceOrientation orientation) {
          NSMutableDictionary *tmpOptions = [options mutableCopy];
-@@ -737,7 +876,6 @@ - (void)takePictureWithOrientation:(NSDictionary *)options resolve:(RCTPromiseRe
+@@ -737,7 +851,6 @@ - (void)takePictureWithOrientation:(NSDictionary *)options resolve:(RCTPromiseRe
          [self takePicture:tmpOptions resolve:resolve reject:reject];
      }];
  }
@@ -286,7 +261,7 @@ index 3725edb..4c5e90e 100644
  - (void)takePicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
  {
      // if video device is not set, reject
-@@ -998,6 +1136,7 @@ - (void)takePicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)reso
+@@ -998,6 +1111,7 @@ - (void)takePicture:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)reso
      }
  }
  
@@ -294,10 +269,10 @@ index 3725edb..4c5e90e 100644
  - (void)recordWithOrientation:(NSDictionary *)options resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject{
      [self.sensorOrientationChecker getDeviceOrientationWithBlock:^(UIInterfaceOrientation orientation) {
          NSMutableDictionary *tmpOptions = [options mutableCopy];
-@@ -1306,13 +1445,32 @@ - (void)startSession
+@@ -1306,13 +1420,32 @@ - (void)startSession
          }
-         
-         
+ 
+ 
 -        AVCaptureStillImageOutput *stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
 -        if ([self.session canAddOutput:stillImageOutput]) {
 -            stillImageOutput.outputSettings = @{AVVideoCodecKey : AVVideoCodecJPEG, AVVideoQualityKey: @(1.0)};
@@ -328,12 +303,12 @@ index 3725edb..4c5e90e 100644
 +            NSLog(@"cannot add photo output");
 +            return;
 +        }
-+        
-+        
++
++
  
          // If AVCaptureVideoDataOutput is not required because of Google Vision
          // (see comment in -record), we go ahead and add the AVCaptureMovieFileOutput
-@@ -1606,6 +1764,7 @@ - (void)updateSessionPreset:(AVCaptureSessionPreset)preset
+@@ -1606,6 +1739,7 @@ - (void)updateSessionPreset:(AVCaptureSessionPreset)preset
              if ([self.session canSetSessionPreset:preset]) {
                  [self.session beginConfiguration];
                  self.session.sessionPreset = preset;

@@ -83,54 +83,6 @@ const styles = StyleSheet.create({
     // flex: 1,
     // justifyContent: 'flex-end',
   },
-  modalContainer: {
-    paddingTop: 20,
-    flex: 1,
-  },
-  capture: {
-    flex: 0,
-    backgroundColor: '#fff',
-    borderRadius: 5,
-    padding: 15,
-    paddingHorizontal: 20,
-    alignSelf: 'center',
-    margin: 20,
-  },
-  bottomToolbar: {
-    width: winWidth,
-    position: 'absolute',
-    height: 100,
-    bottom: 0,
-  },
-  captureBtn: {
-    width: 60,
-    height: 60,
-    borderWidth: 2,
-    borderRadius: 60,
-    borderColor: '#ffffff',
-  },
-  captureBtnActive: {
-    width: 80,
-    height: 80,
-  },
-  captureBtnInternal: {
-    width: 76,
-    height: 76,
-    borderWidth: 2,
-    borderRadius: 76,
-    backgroundColor: 'red',
-    borderColor: 'transparent',
-  },
-  imageView: {
-    width: winWidth,
-    height: winHeight / 2,
-    flex: 1,
-    flexWrap: 'wrap',
-    // alignSelf: 'stretch',
-    // width: undefined,
-    // height: undefined,
-    resizeMode: 'stretch',
-  },
 });
 
 export default MyCamera;

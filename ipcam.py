@@ -30,6 +30,7 @@ class IPcam:
 		self.candidates = []
 		self.isplaying = False
 
+    # set up socket
 	async def createSIO(self):
 		print("create a new async sio client")
 		self.sio = socketio.AsyncClient()
@@ -44,12 +45,6 @@ class IPcam:
 		@self.sio.on("established")
 		async def established():
 			print('connection established')
-			# if self.initiator:
-			# 	print("create offer after established")
-			# 	# print(self.pc)
-			# 	await self.createOffer()
-			# else:
-			# 	print("initiator is failed")
 
 		@self.sio.on("offer-or-answer")
 		async def offerOrAnswer(sdp):
@@ -64,6 +59,7 @@ class IPcam:
 		@self.sio.on("candidate")
 		async def addCandidate(candidate):
 			self.candidates.append(candidate)
+			# decode the candidate info
 			split_candidate = candidate["candidate"].split(" ")
 			sdpMLineIndex = candidate["sdpMLineIndex"]
 			sdpMid = candidate["sdpMid"]
@@ -78,24 +74,39 @@ class IPcam:
 			new_candidate = RTCIceCandidate(component = component, foundation = foundation, ip = ip, port = port, priority = priority, protocol = protocol, type = candidate_type, sdpMid = sdpMid, sdpMLineIndex = sdpMLineIndex, tcpType = tcp_type)
 			await self.pc.addIceCandidate(new_candidate)
 			print("successfully add new candidate")
-	
+
+    # wrapper for socketio emit
 	async def sendToPeer(self, message, data):
 		await self.sio.emit(message, data)
+
 	async def siowait(self):
 		await self.sio.wait()
+
 	async def sioclose(self):
 		print("socketio disconnet")
 		await self.sio.disconnect()
+
 	async def pcclose(self):
 		if self.pc:
 			await self.pc.close()
 		else:
 			print("There is no peer connection")
-	async def playvideo(self):
+
+	async def joinRoom(self):
+	    await self.createSIO()
+	    await self.sendToPeer('join', {"roomId": self.roomid})
+
+	async def takePhoto(self, name):
+		if self.pc and self.pc.connectionState == "connected":
+			print("close pc before")
+			await self.pc.close()
+		await self.sio.emit("take-photo", name)
+
+	async def playpreview(self):
 		print("transfer to frame")
 		if not self.local_video:
 			print("no local video")
-			return 
+			return
 		print("Video stream exists.")
 		self.isplaying = True
 		while True:
@@ -111,18 +122,16 @@ class IPcam:
 		await self.pcclose()
 		await self.sio.emit("close")
 
-	async def joinRoom(self):
-		await self.createSIO()
-		await self.sendToPeer('join', {"roomId": self.roomid})
-
+    # set up WebRTC peer connection
 	async def setupPC(self):
 		print("new peer connection")
 		self.pc = RTCPeerConnection()
 		@self.pc.on("connectionstatechange")
 		async def on_connectionstatechange():
 			print("Connection state is", self.pc.connectionState)
+			# check isplaying to avoid repeatedly playing the preview
 			if self.pc.connectionState == "connected" and not self.isplaying:
-				await self.playvideo()
+				await self.playpreview()
 			elif self.pc.connectionState == "failed" and self.pc:
 				await self.pc.close()
 			elif self.pc.connectionState == "disconnect":
@@ -150,31 +159,27 @@ class IPcam:
 	async def onConnection(self):
 		await self.sio.emit("on-connect")
 
-	async def takePhoto(self, name):
-		if self.pc and self.pc.connectionState == "connected":
-			print("close pc before")
-			await self.pc.close()
-		await self.sio.emit("take-photo", name)
-
 	# Set up the webrtc connection then play the video automatically. User can press 'a' to stop the preview and the webrtc connection will be closed
 	async def playVideo(self):
 		await self.setupPC()
 		await self.onConnection()
 
+    # change the ios camera settings remotely.
 	async def cameraSetting(self, settings):
 		print("change camera settings")
 		await self.sio.emit("setting", settings)
 
+    # Send a picture to the ios device and display it on the screen.
 	async def displayImage(self, image_path):
 		print("pass the image", image_path)
-		img = cv2.imread(image_path)
-		# print(img)
-		encoded_string = base64.b64encode(cv2.imencode('.jpeg', img)[1]).decode("utf-8") # have to add this decode
-
+		if image_path != "":
+		    img = cv2.imread(image_path)
+		    encoded_string = base64.b64encode(cv2.imencode('.jpeg', img)[1]).decode("utf-8") # have to add this decode
+		else:
+		    encoded_string = None
 		await self.sio.emit("display", encoded_string)
 
 	async def checkPeerState(self):
 		await self.sio.emit("check-peer-state")
 
 
-	
