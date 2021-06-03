@@ -22,6 +22,18 @@ brew install cocoapods --build-from-source && brew link --overwrite cocoapods
 ```
 - parcel-bundler
 
+### Python 
+- Install engineio:
+```
+pip3 install 'python-engineio>=3.1.0,<4.1.0'
+```
+- Install socketio:
+```
+pip3 install 'python-socketio>=4.1.0,<5.1.0'
+```
+- Install [aiortc](https://github.com/aiortc/aiortc)
+- Install python-opencv, asyncio
+
 
 ### Deploy the iOS application on iPhone/iPad using cable ([tutorial video](https://www.youtube.com/watch?v=RBZL6PO2ytc))
 1. clone this repo
